@@ -17,7 +17,6 @@
                           {:int1 [a1 b1] :int2 [a2 b2]})))))))
 
 (defn complement [set]
-                                        ;(check-set set)
   (let [sorted (sort set)
         [max-upper comple]
         (reduce (fn [[lower-limit intervals] [a b]]
@@ -29,17 +28,6 @@
     (if max-upper
       (conj comple [max-upper Long/MAX_VALUE])
       comple)))
-
-(complement [[5 10] [11 20]])
-(check-set [[5 10] [11 20]])
-(-> [[5 10]]
-    complement
-    complement)
-(complement [[Long/MIN_VALUE 4] [11 Long/MAX_VALUE]])
-(complement [])
-(complement [[Long/MIN_VALUE 5]])
-(complement [[Long/MIN_VALUE Long/MAX_VALUE]])
-(complement [[5 Long/MAX_VALUE]])
 
 (defn insert [set [a b]]
   (let [sorted (sort set)
@@ -57,33 +45,10 @@
   (reduce (fn [acc [a b]] (if (and (last acc) (= (inc (second (last acc))) a))
                             (conj (butlast acc) [(first (last acc)) b])
                             (conj acc [a b]))) [] set))
-(normalize [[1 2] [3 3] [4 4]])
-(normalize *1)
-(normalize [])
-(normalize [[Long/MIN_VALUE Long/MAX_VALUE]])
-
-(insert [[1 2] [4 6] [9 11]] [2 9])
-(insert [[1 2] [4 6] [9 11]] [2 5])
-(insert [[1 2] [4 6] [9 11]] [2 12])
-(insert [[1 2] [4 6] [9 11]] [5 6])
-(insert [[1 2] [4 6] [9 11]] [0 16])
-(insert [[1 2] [4 6] [9 11]] [0 0])
-(insert [[1 2] [4 6] [9 11]] [3 3])
-
 
 (defn union [s1 s2] (normalize (reduce insert s1 s2)))
-(union [[1 2] [4 6] [9 11]] (complement [[1 2] [4 6] [9 11]]))
+
 (defn intersection [s1 s2] (normalize (complement (union (complement s1) (complement s2)))))
-(intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]])
-(interval-set-contains 2 (intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]]))
-
-(comment
-  (check-set [[2 3] [5 5]])
-
-  (interval-set-contains 3 [[2 4]])
-  (interval-set-contains 30 [[2 4]])
-
-  )
 
 (defn comparison->set [op c]
   (case op
@@ -110,31 +75,63 @@
 
       (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2})))))
 
-(exp->set '(= x 5))
-(exp->set '(<= x 5))
-(exp->set '(>= x 5))
-(exp->set '(not (= x 5)))
-(exp->set '(and (= x 5) (= x 5)))
-(exp->set '(and (= x 5) (not (= x 5))))
-(exp->set '(or (<= x 5) (= x 6)))
-(exp->set '(or
-            (and (= x 5) (= y 6))
-            (and (= x 15) (= y 16))))
-
-
-'(and (= x 5) (not (= x 5)))
-
 (def negated-op
   '{= =
     <= >
     >= <
     < >=
     > <=})
+
 (defn normalize-exp [[op p1 p2]]
   (if (and (instance? Long p1) (symbol? p2))
     (conj (list p2 p1) (negated-op op))
     (list op p1 p2)))
-(normalize-exp '(= 4 x))
-(normalize-exp '(= x 4))
-(normalize-exp '(<= 4 x))
 
+(comment
+  (complement [[5 10] [11 20]])
+  (check-set [[5 10] [11 20]])
+  (-> [[5 10]]
+      complement
+      complement)
+  (complement [[Long/MIN_VALUE 4] [11 Long/MAX_VALUE]])
+  (complement [])
+  (complement [[Long/MIN_VALUE 5]])
+  (complement [[Long/MIN_VALUE Long/MAX_VALUE]])
+  (complement [[5 Long/MAX_VALUE]])
+
+  (normalize [[1 2] [3 3] [4 4]])
+  (normalize *1)
+  (normalize [])
+  (normalize [[Long/MIN_VALUE Long/MAX_VALUE]])
+
+  (insert [[1 2] [4 6] [9 11]] [2 9])
+  (insert [[1 2] [4 6] [9 11]] [2 5])
+  (insert [[1 2] [4 6] [9 11]] [2 12])
+  (insert [[1 2] [4 6] [9 11]] [5 6])
+  (insert [[1 2] [4 6] [9 11]] [0 16])
+  (insert [[1 2] [4 6] [9 11]] [0 0])
+  (insert [[1 2] [4 6] [9 11]] [3 3])
+
+  (union [[1 2] [4 6] [9 11]] (complement [[1 2] [4 6] [9 11]]))
+
+  (intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]])
+  (interval-set-contains 2 (intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]]))
+
+  (interval-set-contains 3 [[2 4]])
+  (interval-set-contains 30 [[2 4]])
+
+  (exp->set '(= x 5))
+  (exp->set '(<= x 5))
+  (exp->set '(>= x 5))
+  (exp->set '(not (= x 5)))
+  (exp->set '(and (= x 5) (= x 5)))
+  (exp->set '(and (= x 5) (not (= x 5))))
+  (exp->set '(or (<= x 5) (= x 6)))
+  (exp->set '(or
+              (and (= x 5) (= y 6))
+              (and (= x 15) (= y 16))))
+  (normalize-exp '(= 4 x))
+  (normalize-exp '(= x 4))
+  (normalize-exp '(<= 4 x))
+
+  )
