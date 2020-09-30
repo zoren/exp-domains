@@ -79,18 +79,10 @@
 
 (comment
   (check-set [[2 3] [5 5]])
-  (disj #{[2 3]} nil)
 
   (interval-set-contains 3 [[2 4]])
   (interval-set-contains 30 [[2 4]])
 
-  (complement #{[Long/MIN_VALUE Long/MAX_VALUE]})
-  (complement #{})
-
-  (insert [2 9] #{[1 2] [4 6] [9 11]})
-  (insert [2 5] #{[1 2] [4 6] [9 11]})
-  (insert [2 12] #{[1 2] [4 6] [9 11]})
-  (insert [5 6] #{[1 2] [4 6] [9 11]})
   )
 
 (defn comparison->set [op c]
@@ -132,7 +124,6 @@
 
 '(and (= x 5) (not (= x 5)))
 
-(#{= <= >= < >} =)
 (def negated-op
   '{= =
     <= >
