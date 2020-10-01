@@ -50,30 +50,66 @@
 
 (defn intersection [s1 s2] (normalize (complement (union (complement s1) (complement s2)))))
 
-(defn comparison->set [op c]
-  (case op
-    = [c c]
-    <= [Long/MIN_VALUE c]
-    >= [c Long/MAX_VALUE]
-    < (when-not (= c Long/MIN_VALUE) [Long/MIN_VALUE (dec c)])
-    > (when-not (= c Long/MAX_VALUE) [(inc c) Long/MAX_VALUE])
-    ))
+(def long? (partial instance? Long))
+
+(def all-values [Long/MIN_VALUE Long/MAX_VALUE])
+(defn all-values? [[a b]] (and (= a Long/MIN_VALUE) (= b Long/MAX_VALUE)))
+
+(defn intervals->set [intervals]
+  (reduce
+   (fn [acc [v interval-set]]
+     (cond
+       (all-values? (first interval-set))
+       acc
+
+       (empty? interval-set)
+       (reduced :empty-env)
+
+       :else
+       (assoc acc v interval-set)))
+   {}
+   intervals))
 
 (defn exp->set [[op p1 p2]]
-  (if ('#{= <= >= < >} op)
-    (do
-      (when-not (and (symbol? p1) (instance? Long p2))
-        (throw (ex-info "only var to const supported" {:p1 p1 :p2 p2})))
-      (if-let [set (comparison->set op p2)]
-        {p1 [set]}
-        {p1 []})
-      )
-    (case op
-      not (into {} (map (juxt key (comp complement val)) (exp->set p1)))
-      and (merge-with intersection (exp->set p1) (exp->set p2))
-      or (merge-with union (exp->set p1) (exp->set p2))
+  (when (and ('#{= <= >= < >} op) (or (not (symbol? p1)) (not (long? p2))))
+    (throw (ex-info "only var to long supported" {:op op :p1 p1 :p2 p2})))
+  (case op
+    = {p1 [[p2 p2]]}
+    <= (if-not (= p2 Long/MAX_VALUE) {p1 [[Long/MIN_VALUE p2]]} {})
+    >= (if-not (= p2 Long/MIN_VALUE) {p1 [[p2 Long/MAX_VALUE]]} {})
+    < (if-not (= p2 Long/MIN_VALUE) {p1 [[Long/MIN_VALUE (dec p2)]]} :empty-env)
+    > (if-not (= p2 Long/MAX_VALUE) {p1 [[(inc p2) Long/MAX_VALUE]]} :empty-env)
+    not
+    (let [env (exp->set p1)]
+      (if (= :empty-env env)
+        {}
+        (intervals->set (map (juxt key (comp complement val)) env))))
+    and
+    (let [[env1 env2] [(exp->set p1) (exp->set p2)]]
+      (cond
+        (= :empty-env env1)
+        :empty-env
 
-      (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2})))))
+        (= :empty-env env2)
+        :empty-env
+
+        :else
+        (intervals->set (map (fn [v] [v (intersection (env1 v [all-values]) (env2 v [all-values]))])
+                             (distinct (concat (keys env1) (keys env2)))))))
+    or
+    (let [[env1 env2] [(exp->set p1) (exp->set p2)]]
+      (cond
+        (= :empty-env env1)
+        env2
+
+        (= :empty-env env2)
+        env1
+
+        :else
+        (intervals->set (map (fn [v] [v (union (env1 v [all-values]) (env2 v [all-values]))])
+                             (distinct (concat (keys env1) (keys env2)))))))
+
+    (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2}))))
 
 (def swapped-op
   '{= =
@@ -100,7 +136,6 @@
   (complement [[5 Long/MAX_VALUE]])
 
   (normalize [[1 2] [3 3] [4 4]])
-  (normalize *1)
   (normalize [])
   (normalize [[Long/MIN_VALUE Long/MAX_VALUE]])
 
@@ -111,10 +146,10 @@
   (insert [[1 2] [4 6] [9 11]] [0 16])
   (insert [[1 2] [4 6] [9 11]] [0 0])
   (insert [[1 2] [4 6] [9 11]] [3 3])
-
   (union [[1 2] [4 6] [9 11]] (complement [[1 2] [4 6] [9 11]]))
 
   (intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]])
+  (intersection [[2 4]] [[7 9]])
   (interval-set-contains 2 (intersection [[1 2] [4 6] [9 10]] [[2 9] [11 11]]))
 
   (interval-set-contains 3 [[2 4]])
@@ -124,12 +159,44 @@
   (exp->set '(<= x 5))
   (exp->set '(>= x 5))
   (exp->set '(not (= x 5)))
+  (exp->set '(< x 5))
+  (exp->set '(< x -9223372036854775808))
+  (exp->set '(> x 9223372036854775807))
+  (exp->set '(<= x 9223372036854775808))
+  (exp->set '(not (< x -9223372036854775808)))
+  (exp->set '(not (<= x 9223372036854775807)))
+  (exp->set '(not (= x 5)))
+
   (exp->set '(and (= x 5) (= x 5)))
   (exp->set '(and (= x 5) (not (= x 5))))
+  (exp->set '(and (< x -9223372036854775808) (= y 2)))
+  (exp->set '(and (<= x 9223372036854775807) (= y 2)))
+  (exp->set '(and (= x 5) (and (= y 9) (not (= x 5))))) ; should be empty env
   (exp->set '(or (<= x 5) (= x 6)))
   (exp->set '(or
               (and (= x 5) (= y 6))
               (and (= x 15) (= y 16))))
+
+  (exp->set '(and (and (= x 5) (not (= x 5))) (= y 7)))
+  (exp->set '(or (and (= x 5) (not (= x 5))) (= y 7)))
+  (exp->set '(and (= x 5) (and (= y 4) (not (= x 5)))))
+  (exp->set '(and (= x 5) (and (= y 9) (not (= x 5)))))
+  (exp->set '(or (<= x 5) (= x 6)))
+  (exp->set '(or
+              (and (= x 5) (= y 6))
+              (and (= x 15) (= y 16))))
+
+  (exp->set '(and (= x 5) (or
+                           (and (= x 5) (= y 6))
+                           (and (= x 15) (= y 16)))))
+
+  (exp->set             '(and (= x 5) (and (= y 6) (not (= x 5)))))
+  (exp->set '(or
+              (and (= x 5) (and (= y 6) (not (= x 5))))
+              (and (= x 15) (= y 16))))
+
+
+
   (normalize-exp '(= 4 x))
   (normalize-exp '(= x 4))
   (normalize-exp '(<= 4 x))
