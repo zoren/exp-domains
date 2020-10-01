@@ -75,16 +75,16 @@
 
       (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2})))))
 
-(def negated-op
+(def swapped-op
   '{= =
-    <= >
-    >= <
-    < >=
-    > <=})
+    <= >=
+    >= <=
+    < >
+    > <})
 
 (defn normalize-exp [[op p1 p2]]
-  (if (and (instance? Long p1) (symbol? p2))
-    (conj (list p2 p1) (negated-op op))
+  (if (and (long? p1) (symbol? p2))
+    (conj (list p2 p1) (swapped-op op))
     (list op p1 p2)))
 
 (comment
