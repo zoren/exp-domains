@@ -115,39 +115,43 @@
     (intervals->set (map (fn [v] [v (union (env1 v [all-values]) (env2 v [all-values]))])
                          (distinct (concat (keys env1) (keys env2)))))))
 
-(defn exp->set [e]
-  (cond
-    (= true e)
-    {}
+(defn exp->set
+  ([e] (exp->set {} e))
+  ([env e]
+   (cond
+     (= true e)
+     {}
 
-    (= false e)
-    :empty-env
+     (= false e)
+     :empty-env
 
-    (list? e)
-    (let [[op p1 p2 p3] e]
-      (when (and ('#{= <= >= < >} op) (or (not (symbol? p1)) (not (long? p2))))
-        (throw (ex-info "only var to long supported" {:op op :p1 p1 :p2 p2})))
-      (case op
-        = {p1 [[p2 p2]]}
-        <= (if-not (= p2 Long/MAX_VALUE) {p1 [[Long/MIN_VALUE p2]]} {})
-        >= (if-not (= p2 Long/MIN_VALUE) {p1 [[p2 Long/MAX_VALUE]]} {})
-        < (if-not (= p2 Long/MIN_VALUE) {p1 [[Long/MIN_VALUE (dec p2)]]} :empty-env)
-        > (if-not (= p2 Long/MAX_VALUE) {p1 [[(inc p2) Long/MAX_VALUE]]} :empty-env)
-        not
-        (env-complement (exp->set p1))
-        and
-        (env-intersection (exp->set p1) (exp->set p2))
-        or
-        (env-union (exp->set p1) (exp->set p2))
-        if
-        (let [env-cond (exp->set p1)]
-          (env-union
-           (env-intersection env-cond (exp->set p2))
-           (env-intersection (env-complement env-cond) (exp->set p3))))
+     (symbol? e)
+     (or (env e) (throw (ex-info "var not found" {:v e :env env})))
 
-        (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2}))))
-    :else
-    (throw (ex-info "exp->set: no match" {:exp e}))))
+     (seq? e)
+     (let [[op p1 p2 p3] (macroexpand e)]
+       (when (and ('#{= <= >= < >} op) (or (not (symbol? p1)) (not (long? p2))))
+         (throw (ex-info "only var to long supported" {:op op :p1 p1 :p2 p2})))
+       (case op
+         = {p1 [[p2 p2]]}
+         <= (if-not (= p2 Long/MAX_VALUE) {p1 [[Long/MIN_VALUE p2]]} {})
+         >= (if-not (= p2 Long/MIN_VALUE) {p1 [[p2 Long/MAX_VALUE]]} {})
+         < (if-not (= p2 Long/MIN_VALUE) {p1 [[Long/MIN_VALUE (dec p2)]]} :empty-env)
+         > (if-not (= p2 Long/MAX_VALUE) {p1 [[(inc p2) Long/MAX_VALUE]]} :empty-env)
+         not
+         (env-complement (exp->set env p1))
+         if
+         (let [env-cond (exp->set env p1)]
+           (env-union
+            (env-intersection env-cond (exp->set env p2))
+            (env-intersection (env-complement env-cond) (exp->set env p3))))
+         let*
+         (let [env1 (into {} (map (fn [[local-var e]] [local-var (exp->set env e)]) (partition 2 p1)))]
+           (exp->set env1 p2))
+
+         (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2 :oplet (= 'let* op)}))))
+     :else
+     (throw (ex-info "exp->set: no match" {:exp e :t (type e) })))))
 
 (def swapped-op
   '{= =
@@ -216,6 +220,7 @@
   (interval-set-contains 30 [[2 4]])
 
   (exp->set '(= x 5))
+  (exp->set '{b [[5 7]]} 'b)
   (exp->set '(<= x 5))
   (exp->set '(>= x 5))
   (exp->set '(not (= x 5)))
@@ -229,7 +234,9 @@
   (exp->set '(not (= x 5)))
 
   (exp->set '(and (= x 5) (= x 5)))
+  (exp->set '(or (= x 5) (= x 6) (= x 7)))
   (exp->set '(and (= x 5) (not (= x 5))))
+  (exp->set '(let* [v (= x 5)] (if v false true)))
   (exp->set '(not (and (= x 5) (not (= x 5)))))
   (exp->set '(and (< x -9223372036854775808) (= y 2)))
   (exp->set '(and (<= x 9223372036854775807) (= y 2)))
