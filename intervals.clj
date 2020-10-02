@@ -139,26 +139,15 @@
         (env-intersection (exp->set p1) (exp->set p2))
         or
         (env-union (exp->set p1) (exp->set p2))
-
         if
-        (let [env-cond (exp->set p1)
-              env-t (exp->set p2)
-              env-f (exp->set p3)]
-          (cond
-            (= env-cond :empty-env)
-            env-f
+        (let [env-cond (exp->set p1)]
+          (env-union
+           (env-intersection env-cond (exp->set p2))
+           (env-intersection (env-complement env-cond) (exp->set p3))))
 
-            (= env-cond {})
-            env-t
-
-            :else
-            (env-union
-             (env-intersection env-cond env-t)
-             (env-intersection (env-complement env-cond) env-f))
-            )
-          )
-
-        (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2}))))))
+        (throw (ex-info "exp->set: no match" {:op op :p1 p1 :p2 p2}))))
+    :else
+    (throw (ex-info "exp->set: no match" {:exp e}))))
 
 (def swapped-op
   '{= =
