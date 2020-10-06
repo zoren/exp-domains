@@ -153,6 +153,15 @@
      :else
      (throw (ex-info "exp->set: no match" {:exp e :t (type e) })))))
 
+(->
+ 'contains?
+ clojure.repl/source-fn
+ read-string
+ macroexpand
+ last
+                                        ;last
+ )
+
 (def swapped-op
   '{= =
     <= >=
